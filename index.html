@@ -708,20 +708,6 @@
 <script>
 // ============================================================
 // WANDERING TILES — GENERATIVE LINE COMPOSITIONS
-//
-// Same seed → many surfaces:
-//   • Cover, Plate, Frame — same seed
-//   • All 4 surfaces (Print, Scarf, Textile, Wall) — same seed
-//   • Archive — 8 unique seeds
-//
-// Rectangular surfaces tile the square composition to fill.
-//
-// Generative engine (preserved from source):
-//   • 4–5 × 4–5 grid of tiles
-//   • Parity-rule wander inside each tile
-//   • Containment check with 12% margin
-//   • Single continuous curve per tile
-//   • Black lines on white ground
 // ============================================================
 
 const prefix = 'Wandering-Tiles';
@@ -739,12 +725,9 @@ class SeededRandom {
 
 // ============================================================
 // SKETCH FACTORY
-// tile: { cols, rows } — repeat the square composition N times
 // ============================================================
 function makeSketch({ slotId, seedValue, isMaster, maxFrames, tile }) {
   const stopAfter = maxFrames || Infinity;
-  const tileCols = (tile && tile.cols) || 1;
-  const tileRows = (tile && tile.rows) || 1;
 
   let canvasW = 0;
   let canvasH = 0;
@@ -754,6 +737,8 @@ function makeSketch({ slotId, seedValue, isMaster, maxFrames, tile }) {
     p.setup = function() {
       const slot = document.getElementById(slotId);
       if (!slot) return;
+      
+      // Force the slot to provide accurate dimensions
       const rect = slot.getBoundingClientRect();
       canvasW = Math.max(80, Math.floor(rect.width));
       canvasH = Math.max(80, Math.floor(rect.height));
@@ -764,6 +749,7 @@ function makeSketch({ slotId, seedValue, isMaster, maxFrames, tile }) {
       p.noFill();
       p.noLoop();
 
+      // Ensure canvas scales precisely to the container bounds
       const canvasEl = p.canvas;
       canvasEl.style.position = 'absolute';
       canvasEl.style.top = '0';
@@ -792,43 +778,31 @@ function makeSketch({ slotId, seedValue, isMaster, maxFrames, tile }) {
         return;
       }
 
-      // Tile composition
-      const tileW = canvasW / tileCols;
-      const tileH = canvasH / tileRows;
-      const tileSize = Math.min(tileW, tileH);
-
-      for (let ty = 0; ty < tileRows; ty++) {
-        for (let tx = 0; tx < tileCols; tx++) {
-          const ox = tx * tileW + (tileW - tileSize) / 2;
-          const oy = ty * tileH + (tileH - tileSize) / 2;
-
-          p.push();
-          p.translate(ox, oy);
-          drawComposition(p, tileSize, seedValue);
-          p.pop();
-        }
-      }
+      // Draw a single composition scaled to fill the entire canvas bounds.
+      // This prevents the "small square in the corner" issue on rectangular surfaces.
+      drawComposition(p, canvasW, canvasH, seedValue);
 
       frameCount++;
     };
   };
 
-  // ---- Draw the wandering-tiles composition into a square of side `size` ----
-  function drawComposition(p, size, seedValue) {
+  // ---- Draw the wandering-tiles composition scaled to fill the canvas ----
+  function drawComposition(p, w, h, seedValue) {
     const sr = new SeededRandom(seedValue);
-    const cs = size;
-
+    
     // White background
     p.background(0, 0, 100);
 
+    // Determine tile grid based on the shortest side to keep tiles square
     const tileCount = sr.int(4, 5);
-    const tileSize = cs / tileCount;
+    const baseSize = Math.min(w, h);
+    const tileSize = baseSize / tileCount;
     const steps = Math.floor(tileSize * 0.75);
     const turnBias = sr.pick([1, -1]);
 
     // Black lines
     p.stroke(0, 0, 0);
-    p.strokeWeight(cs * 0.0018);
+    p.strokeWeight(baseSize * 0.0018);
     p.noFill();
 
     const dirs = [
@@ -838,10 +812,18 @@ function makeSketch({ slotId, seedValue, isMaster, maxFrames, tile }) {
       [0, -1]
     ];
 
-    for (let x = 0; x < tileCount; x++) {
-      for (let y = 0; y < tileCount; y++) {
-        const ox = x * tileSize;
-        const oy = y * tileSize;
+    // Calculate how many tiles fit across the width and height to fill the space
+    const cols = Math.ceil(w / tileSize);
+    const rows = Math.ceil(h / tileSize);
+
+    // Center the grid offset to avoid a tiny corner gap if the aspect ratio isn't perfect
+    const offsetX = (w - cols * tileSize) / 2;
+    const offsetY = (h - rows * tileSize) / 2;
+
+    for (let x = 0; x < cols; x++) {
+      for (let y = 0; y < rows; y++) {
+        const ox = offsetX + x * tileSize;
+        const oy = offsetY + y * tileSize;
 
         const stepSize = tileSize * sr.range(0.045, 0.055);
         const margin = tileSize * 0.12;
@@ -985,13 +967,13 @@ function drawFramedPlate() {
 }
 
 // ============================================================
-// SURFACES — same seed as plate, tiled to fill aspect ratio
+// SURFACES
 // ============================================================
 const surfaceDefs = [
-  { id: 'surfacePrint',   wrapId: 'wrap-surfacePrint',   tile: { cols: 1, rows: 1 } },
-  { id: 'surfaceScarf',   wrapId: 'wrap-surfaceScarf',   tile: { cols: 3, rows: 1 } },
-  { id: 'surfaceTextile', wrapId: 'wrap-surfaceTextile', tile: { cols: 2, rows: 2 } },
-  { id: 'surfaceWall',    wrapId: 'wrap-surfaceWall',    tile: { cols: 1, rows: 2 } }
+  { id: 'surfacePrint',   wrapId: 'wrap-surfacePrint' },
+  { id: 'surfaceScarf',   wrapId: 'wrap-surfaceScarf' },
+  { id: 'surfaceTextile', wrapId: 'wrap-surfaceTextile' },
+  { id: 'surfaceWall',    wrapId: 'wrap-surfaceWall' }
 ];
 
 function drawSurfaces() {
@@ -1021,7 +1003,7 @@ function drawSurfaces() {
           seedValue: seed,
           isMaster: false,
           maxFrames: 2,
-          tile: def.tile
+          tile: { cols: 1, rows: 1 } // Always pass 1:1, scaling is handled inside draw
         }),
         slot
       );
@@ -1031,7 +1013,7 @@ function drawSurfaces() {
 }
 
 // ============================================================
-// ARCHIVE — 8 unique seeds
+// ARCHIVE
 // ============================================================
 const archiveSeeds = [];
 
